@@ -1,0 +1,3 @@
+[submodule "generalized-interpolative-flight-tool"]
+	path = gift
+	url = git@github.com:UC-BIRD-Lab/generalized-interpolative-flight-tool.git
