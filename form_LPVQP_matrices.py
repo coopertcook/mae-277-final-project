@@ -7,7 +7,7 @@ def form_LPVQP_matrices(
     B: np.ndarray[tuple[int, int, int], np.dtype[np.float64]],   # System B matrices (N x m x n)
     Q: np.ndarray[tuple[int, int, int], np.dtype[np.float64]],   # State cost (N x m x m)
     R: np.ndarray[tuple[int, int, int], np.dtype[np.float64]],   # Control cost (N x n x n)
-    P: np.ndarray[tuple[int, int], np.dtype[np.float64]],   # Terminal cost (N x m x m)
+    P: np.ndarray[tuple[int, int], np.dtype[np.float64]],   # Terminal cost (m x m)
     Aug_x: np.ndarray[tuple[int, int], np.dtype[np.float64]],   # State constraints in augmented matrix form (p x m+1)
     Aug_u: np.ndarray[tuple[int, int], np.dtype[np.float64]],   # Control constraints in augmented matrix form (q x n+1)
     ): # Horizon is implied from length of A/B/Q/R/P
@@ -21,6 +21,9 @@ def form_LPVQP_matrices(
     # --------- QP Matrices ----------------------------------------
     Sx = np.vstack([np.eye(m, dtype=np.float64) for _ in range(N + 1)])
     Su = np.zeros(((N + 1) * m, N * n), dtype=np.float64)
+
+    print(Sx)
+    print(Su)
 
     for i in range(0, N):
         # Set the ith A block of the stacked state influence vector
@@ -99,7 +102,7 @@ if __name__ == "__main__":
     Aug_u = np.zeros((B.shape[0], B.shape[0] + 1))
 
     # Steps to horizon
-    N = 3
+    N = 2
 
     # A and B matrices for each step
     As = np.stack([A*float(i + 1) for i in range(N)])
@@ -108,3 +111,4 @@ if __name__ == "__main__":
     Rs = np.stack([R]*N)
 
     result = form_LPVQP_matrices(As, Bs, Qs, Rs, P, Aug_x, Aug_u)
+    # print(result)
