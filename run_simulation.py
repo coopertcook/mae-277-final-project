@@ -56,13 +56,9 @@ for i, t in enumerate(times[:-1]):
 
     # Create the constraint matrices
     Aug_x = np.zeros((2, 8))
-    Aug_u = np.zeros((2, 8))
+    Aug_u = np.zeros((2, 4))
 
     # Get the QP matrices
-    print(np.stack([A_qp]*N).shape)
-    print(np.stack([B_qp]*N).shape)
-    print(np.stack([Q]*N).shape)
-    print(np.stack([R]*N).shape)
     H, L, G, W, T, IMPC = form_LPVQP_matrices(np.stack([A_qp]*N), np.stack([B_qp]*N), np.stack([Q]*N), np.stack([R]*N), P, Aug_x, Aug_u)
     h = ca.DM(H)
     a = ca.DM(G)
