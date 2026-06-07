@@ -1,2 +1,4 @@
 _logs
 outputs
+__pycache__
+.vscode
