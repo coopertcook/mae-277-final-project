@@ -22,9 +22,6 @@ def form_LPVQP_matrices(
     Sx = np.vstack([np.eye(m, dtype=np.float64) for _ in range(N + 1)])
     Su = np.zeros(((N + 1) * m, N * n), dtype=np.float64)
 
-    print(Sx)
-    print(Su)
-
     for i in range(0, N):
         # Set the ith A block of the stacked state influence vector
         # The next block is the matrix product of the previous matrix and the next A matrix
@@ -50,8 +47,8 @@ def form_LPVQP_matrices(
     # --------- Constraints ------------------------------------------
     Ax = Aug_x[:, :-1]
     bx = Aug_x[:, [-1]]
-    Gx = np.zeros((Ax.shape[0]*N, B.shape[1]*N))
-    Ex = np.zeros((Ax.shape[0]*N, A.shape[1]))
+    Gx = np.zeros((Ax.shape[0]*N, B.shape[2]*N))
+    Ex = np.zeros((Ax.shape[0]*N, A.shape[2]))
 
     for i in range(N):
         Gx[i*Ax.shape[0]:(i+1)*Ax.shape[0], :] =  Ax @ Su[(i+1)*m:(i+2)*m, :]
