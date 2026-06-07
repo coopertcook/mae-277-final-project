@@ -64,10 +64,10 @@ def form_LPVQP_matrices(
     W = np.vstack((wu, wx))
     T = np.vstack((np.zeros((Gu.shape[0], m)), Ex))
 
-    IMPC = np.zeros((1, n*N))
-    IMPC[:, :n] += 1
+    IMPC = np.zeros((n, n*N))
+    np.fill_diagonal(IMPC[:n, :n], 1)
 
-    return H, L, G, W, T, IMPC
+    return H, L, G, W, T, IMPC, Sx, Su
 
 if __name__ == "__main__":
 

@@ -10,12 +10,12 @@ from GIFT.processing.animator import Animation
 from GIFT.processing.plotter import SimulationPlotter
 from GIFT.utils.utilities import TrajectoryData, standardize_simulator_data
 
-from utilities import convert_GIFT_AB
+from utilities import convert_GIFT_AB_to_QP_AB
 from form_LPVQP_matrices import form_LPVQP_matrices
 
 
 animator_type: str = "matplotlib"
-visualize: bool = False
+visualize: bool = True
 vehicle: str = "raptor_glider_3dof"
 
 aircraft = Aircraft(type=vehicle, config_overrides={})
@@ -25,8 +25,8 @@ LPV_dynamics = Simulator(aircraft, enable_logging=False, dynamics="LPV3").dynami
 t_start = 0
 t_end = 5
 dt = 0.1
-perch_location = np.array([25., 5.]) # [north, down] (using GIFT location information)
-N = 20
+perch_location = np.array([25., -10.]) # [north, down] (using GIFT location information)
+N = 5
 
 time_start = time.time()
 
@@ -34,54 +34,109 @@ times = np.arange(t_start, t_end + dt, dt)
 for i, t in enumerate(times[:-1]):
     current_state = np.append(aircraft.x[[0, 2, 7, 3, 5, 10]], 1)
     current_control = np.append(aircraft.u, 1)
-    
-    # Get body-frame, nearest trim A and B matrices
-    dx, du, A, B = LPV_dynamics.get_body_AB(aircraft.x, aircraft.u)
 
-    # Convert the matrices for the MPC
-    A_qp, B_qp = convert_GIFT_AB(dx, du, A, B, 0.01)
+    states_to_fetch = [current_state]
+    controls_to_fetch = [current_control]
     
-    # Create the state cost matrix
-    Q = np.zeros((7, 7))
-    Q[[2, 3, 4], [2, 3, 4]] += 1
-    
-    # Create the state cost matrix
-    R = np.zeros((3, 3))
-    
-    # Create the terminal cost matrix
-    P = np.zeros((7, 7))
-    P[[3, 4], [3, 4]] += 1
-    P[[3, 4], -1] = -perch_location
-    P[-1, [3, 4]] = -perch_location
+    for N_num in range(1, N+1):
+        print(f">>> Solving QP for N = {N_num} at time {t}...")
 
-    # Create the constraint matrices
-    Aug_x = np.zeros((2, 8))
-    Aug_u = np.zeros((2, 4))
+        # Fetch the A and B matrices for each of the state and control vectors for the current problem.
+        A_qps: list[np.ndarray[tuple[int, int], np.dtype[np.float64]]] = []
+        B_qps: list[np.ndarray[tuple[int, int], np.dtype[np.float64]]] = []
+        for state, control in zip(states_to_fetch, controls_to_fetch):
+            GIFT_state = np.zeros((12))
+            GIFT_control = np.zeros((2))
+            GIFT_state[[0, 2, 7, 3, 5, 10]] = state[:-1]
+            GIFT_control[[0, 1]] = control[:-1]
 
-    # Get the QP matrices
-    H, L, G, W, T, IMPC = form_LPVQP_matrices(np.stack([A_qp]*N), np.stack([B_qp]*N), np.stack([Q]*N), np.stack([R]*N), P, Aug_x, Aug_u)
-    h = ca.DM(H)
-    a = ca.DM(G)
-    
-    # Create the quadratic program problem using CasADi's `conic` class.
-    qp = {}
-    qp['h'] = h.sparsity() # Passes only the sparsity patterns
-    qp['a'] = a.sparsity() # Passes only the sparsity patterns
-    S = ca.conic('S', 'qpoases', qp)
+            # Get initial body-frame, nearest trim A and B matrices
+            dx, du, A, B = LPV_dynamics.get_body_AB(GIFT_state, GIFT_control)
+            
+            # Convert the matrices for the QP
+            A_qp, B_qp = convert_GIFT_AB_to_QP_AB(dx, du, A, B, 0.1)
 
-    # Calculate the current linear term vector and constraint right-hand side matrix.
-    g = np.reshape(np.einsum('ij, j -> i', L, current_state), (L.shape[0], 1))
-    uba = (W + np.einsum('ij, j -> i', T, current_state)[:, np.newaxis])
+            A_qps.append(A_qp)
+            B_qps.append(B_qp)
 
-    # Solve the QP
-    sol = S(h=h, g=g, a=a, uba=uba)
-    U_opt = np.array(sol['x'])
+        # Create the state cost matrix
+        Q = np.zeros((7, 7))
+        Q[[0, 1, 2], [0, 1, 2]] += 0
+
+        # Create the state cost matrix
+        R = np.zeros((3, 3))
+
+        # Create the terminal cost matrix
+        P = np.zeros((7, 7))
+        P[[3, 4], [3, 4]] += 1
+        P[[3, 4], -1] = -perch_location
+        P[-1, [3, 4]] = -perch_location
+
+        # Create the constraint matrices
+        Aug_x = np.array([
+            [-1, 0, 0, 0, 0, 0, 0,    5],
+            [ 1, 0, 0, 0, 0, 0, 0,   16],
+            [ 0,-1, 0, 0, 0, 0, 0,   -5],
+            [ 0, 1, 0, 0, 0, 0, 0,    5],
+        ])
+        Aug_u = np.array([
+            [-1, 0, 0,    12 * np.pi / 180],
+            [ 1, 0, 0,    12 * np.pi / 180],
+            [ 0,-1, 0,    10 * np.pi / 180],
+            [ 0, 1, 0,    45 * np.pi / 180],
+            [ 0, 0,-1,    1],
+            [ 0, 0, 1,    1],
+        ])
+
+        # Get the QP matrices
+        H, L, G, W, T, IMPC, Sx, Su = form_LPVQP_matrices(
+            np.stack(A_qps),
+            np.stack(B_qps),
+            np.stack([Q]*N_num),
+            np.stack([R]*N_num),
+            P, Aug_x, Aug_u
+        )
+
+        h = ca.DM(H)
+        a = ca.DM(G)
+        
+        # Create the quadratic program problem using CasADi's `conic` class.
+        qp = {}
+        qp['h'] = h.sparsity() # Passes only the sparsity patterns
+        qp['a'] = a.sparsity() # Passes only the sparsity patterns
+        S = ca.conic('S', 'qpoases', qp)
+
+        # Calculate the current linear term vector and constraint right-hand side matrix.
+        g = np.reshape(np.einsum('ij, j -> i', L, current_state), (L.shape[0], 1))
+        uba = (W + np.einsum('ij, j -> i', T, current_state)[:, np.newaxis])
+
+        # Solve the QP
+        sol = S(h=h, g=g, a=a, uba=uba)
+        U_opt = np.array(sol['x'])
+
+        # Get the QP predicted states and control inputs
+        x_pred = Sx @ current_state[:, np.newaxis] + Su @ U_opt
+        x_pred = x_pred.reshape(len(current_state), N_num+1)
+        u_pred = U_opt.reshape(len(current_control), N_num)
+
+        # Append all the new states and controls to lists for the next QP loop
+        states_to_fetch = [states_to_fetch[0]]
+        controls_to_fetch = [controls_to_fetch[0]]
+        states_to_fetch.extend([x_pred[:, i] for i in range(1, N_num+1)])
+        controls_to_fetch.extend([u_pred[:, i] for i in range(N_num)])
+        
+        # states_to_fetch.append(states_to_fetch[-1])
+        # controls_to_fetch.append(controls_to_fetch[-1])
+
     uk = IMPC @ U_opt
 
-    print(uk)
+    # print(aircraft.control_view.as_dict())
+
+    aircraft.u[0] = uk[0, 0]
+    aircraft.u[1] = uk[1, 0]
 
     _ = simulation.execute(t_start=t, t_end=t+dt, t_step=1e-2, write_history=False)
-    aircraft.u[0] += 0.01
+    # aircraft.u[0] += 0.01
 
 raw_sim_data = simulation.execute(t_start=times[-1], t_end=times[-1] + dt, write_history=True)
 sim_data = standardize_simulator_data(raw_sim_data, aircraft=aircraft)
