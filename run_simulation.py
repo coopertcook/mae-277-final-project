@@ -45,6 +45,7 @@ for i, t in enumerate(times[:-1]):
         A_qps: list[np.ndarray[tuple[int, int], np.dtype[np.float64]]] = []
         B_qps: list[np.ndarray[tuple[int, int], np.dtype[np.float64]]] = []
         for state, control in zip(states_to_fetch, controls_to_fetch):
+            # Convert the QP state to the state notation used in GIFT
             GIFT_state = np.zeros((12))
             GIFT_control = np.zeros((2))
             GIFT_state[[0, 2, 7, 3, 5, 10]] = state[:-1]
@@ -56,6 +57,7 @@ for i, t in enumerate(times[:-1]):
             # Convert the matrices for the QP
             A_qp, B_qp = convert_GIFT_AB_to_QP_AB(dx, du, A, B, 0.1)
 
+            # Add the QP A and B matrices to the lists
             A_qps.append(A_qp)
             B_qps.append(B_qp)
 
@@ -97,6 +99,7 @@ for i, t in enumerate(times[:-1]):
             P, Aug_x, Aug_u
         )
 
+        # Initialize the CasADi sparse matrices
         h = ca.DM(H)
         a = ca.DM(G)
         
@@ -122,11 +125,8 @@ for i, t in enumerate(times[:-1]):
         # Append all the new states and controls to lists for the next QP loop
         states_to_fetch = [states_to_fetch[0]]
         controls_to_fetch = [controls_to_fetch[0]]
-        states_to_fetch.extend([x_pred[:, i] for i in range(1, N_num+1)])
+        states_to_fetch.extend([x_pred[:, i] for i in range(1, N_num+1)])   # Pretty sure this is messed up
         controls_to_fetch.extend([u_pred[:, i] for i in range(N_num)])
-        
-        # states_to_fetch.append(states_to_fetch[-1])
-        # controls_to_fetch.append(controls_to_fetch[-1])
 
     uk = IMPC @ U_opt
 
