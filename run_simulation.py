@@ -33,7 +33,7 @@ time_start = time.time()
 times = np.arange(t_start, t_end + dt, dt)
 for i, t in enumerate(times[:-1]):
     current_state = np.append(aircraft.x[[0, 2, 7, 3, 5, 10]], 1)
-    current_control = np.append(aircraft.u, 1)
+    current_control = aircraft.u
 
     states_to_fetch = [current_state]
     controls_to_fetch = [current_control]
@@ -61,12 +61,22 @@ for i, t in enumerate(times[:-1]):
             A_qps.append(A_qp)
             B_qps.append(B_qp)
 
-        # Create the state cost matrix
-        Q = np.zeros((7, 7))
-        Q[[0, 1, 2], [0, 1, 2]] += 0
+        # # Create the state cost matrix
+        # Q = np.zeros((7, 7))
+        # Q[[0, 1, 2], [0, 1, 2]] += 0
 
-        # Create the state cost matrix
-        R = np.zeros((3, 3))
+        # # Create the state cost matrix
+        # R = np.zeros((2, 2))
+
+        ## TEST ADDING DIFFERENT Q AND R
+        # State cost - penalize velocity errors and position errors
+        Q = np.zeros((7, 7))
+        Q[[0, 1, 2], [0, 1, 2]] = [1.0, 1.0, 1.0]  # velocity states (u, v, w)
+        Q[[3, 4], [3, 4]] = [1.0, 1.0]              # position states (north, down)
+
+        # Control cost - penalize large inputs
+        R = np.zeros((2, 2))
+        R[[0, 1], [0, 1]] = [0.01, 0.01]  # small R = aggressive, large R = smooth
 
         # Create the terminal cost matrix
         P = np.zeros((7, 7))
@@ -82,12 +92,11 @@ for i, t in enumerate(times[:-1]):
             [ 0, 1, 0, 0, 0, 0, 0,    5],
         ])
         Aug_u = np.array([
-            [-1, 0, 0,    12 * np.pi / 180],
-            [ 1, 0, 0,    12 * np.pi / 180],
-            [ 0,-1, 0,    10 * np.pi / 180],
-            [ 0, 1, 0,    45 * np.pi / 180],
-            [ 0, 0,-1,    1],
-            [ 0, 0, 1,    1],
+            [-1, 0,    12 * np.pi / 180],
+            [ 1, 0,    12 * np.pi / 180],
+            [ 0,-1,    10 * np.pi / 180],
+            [ 0, 1,    45 * np.pi / 180],
+
         ])
 
         # Get the QP matrices
@@ -112,6 +121,13 @@ for i, t in enumerate(times[:-1]):
         # Calculate the current linear term vector and constraint right-hand side matrix.
         g = np.reshape(np.einsum('ij, j -> i', L, current_state), (L.shape[0], 1))
         uba = (W + np.einsum('ij, j -> i', T, current_state)[:, np.newaxis])
+
+        print("TROUBLESHOOTING")
+        print("H eigenvalues:", np.linalg.eigvalsh(H))
+        print("Current state:", current_state)
+        print("uba min/max:", uba.min(), uba.max())
+        print("A_qp:", A_qps[0])
+        print("B_qp:", B_qps[0])
 
         # Solve the QP
         sol = S(h=h, g=g, a=a, uba=uba)

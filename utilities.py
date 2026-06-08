@@ -29,12 +29,12 @@ def convert_GIFT_AB_to_QP_AB(
     A_MPC[[3, 4, 5], [3, 4, 5]] += 1
     A_MPC[-1, -1] += 1
 
-    B_MPC = np.zeros((7, 3))
+    B_MPC = np.zeros((7, 2))
     
     # Set up the B matrix
     B_MPC[[[0], [1], [2], [5]], [0, 1]] = Bd
     B_du = Bd @ du[:, np.newaxis]
-    B_MPC[[[0], [1], [2], [5]], [2]] = -B_du
+    A_MPC[[[0], [1], [2], [5]], [6]] += -B_du
 
     return A_MPC, B_MPC
     
