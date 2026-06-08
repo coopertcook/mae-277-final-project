@@ -121,8 +121,8 @@ for i, t in enumerate(times[:-1]):
 
         # Get the QP predicted states and control inputs
         x_pred = Sx @ current_state[:, np.newaxis] + Su @ U_opt
-        x_pred = x_pred.reshape(len(current_state), N_num+1)
-        u_pred = U_opt.reshape(len(current_control), N_num)
+        x_pred = x_pred.reshape(N_num+1, len(current_state)).T # Each row: time step N, each column: state variable
+        u_pred = U_opt.reshape(N_num, -1).T
 
         # Append all the new states and controls to lists for the next QP loop
         states_to_fetch = [states_to_fetch[0]]
