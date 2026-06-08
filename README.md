@@ -88,3 +88,19 @@ pip install -r requirements.txt
 > **Note:** `triton`, `pexpect`, and `ptyprocess` are Linux-only and have been excluded from `requirements.txt`. If you encounter missing package errors, install them manually with `pip install <package>`.
 
 > **GPU (CUDA) packages** such as `torch` with CUDA support may require a separate install step depending on your NVIDIA driver version. See [PyTorch installation guide](https://pytorch.org/get-started/locally/) if needed.
+
+## Installing the GIFT Submodule as a Package
+
+After cloning and activating your environment, install the `generalized-interpolative-flight-tool` submodule as an editable package so Python can find it:
+
+```bash
+pip install -e generalized-interpolative-flight-tool
+```
+
+This only needs to be done once. The `-e` flag means it points directly to the submodule folder, so any changes there are reflected immediately without reinstalling.
+
+## Running the Simulation
+
+```bash
+python run_simulation.py
+```

@@ -61,12 +61,14 @@ for i, t in enumerate(times[:-1]):
             A_qps.append(A_qp)
             B_qps.append(B_qp)
 
-        # Create the state cost matrix
+        # Running cost on distance from perch: (x_pos - 25)^2 + (z_pos + 10)^2
         Q = np.zeros((7, 7))
-        Q[[0, 1, 2], [0, 1, 2]] += 0
+        Q[[3, 4], [3, 4]] = 1
+        Q[[3, 4], -1] = -perch_location
+        Q[-1, [3, 4]] = -perch_location
 
-        # Create the state cost matrix
-        R = np.zeros((3, 3))
+        # Create the control cost matrix (2x2 since control is [tailalt, splay])
+        R = np.eye(2) * 0.001
 
         # Create the terminal cost matrix
         P = np.zeros((7, 7))
