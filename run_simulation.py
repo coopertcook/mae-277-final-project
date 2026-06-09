@@ -33,7 +33,7 @@ time_start = time.time()
 times = np.arange(t_start, t_end + dt, dt)
 for i, t in enumerate(times[:-1]):
     current_state = np.append(aircraft.x[[0, 2, 7, 3, 5, 10]], 1)
-    current_control = np.append(aircraft.u, 1)
+    current_control = aircraft.u.copy()
 
     states_to_fetch = [current_state]
     controls_to_fetch = [current_control]
@@ -49,7 +49,7 @@ for i, t in enumerate(times[:-1]):
             GIFT_state = np.zeros((12))
             GIFT_control = np.zeros((2))
             GIFT_state[[0, 2, 7, 3, 5, 10]] = state[:-1]
-            GIFT_control[[0, 1]] = control[:-1]
+            GIFT_control[[0, 1]] = control
 
             # Get initial body-frame, nearest trim A and B matrices
             dx, du, A, B = LPV_dynamics.get_body_AB(GIFT_state, GIFT_control)
@@ -78,18 +78,16 @@ for i, t in enumerate(times[:-1]):
 
         # Create the constraint matrices
         Aug_x = np.array([
-            [-1, 0, 0, 0, 0, 0, 0,    5],
-            [ 1, 0, 0, 0, 0, 0, 0,   16],
-            [ 0,-1, 0, 0, 0, 0, 0,   -5],
+            # [-1, 0, 0, 0, 0, 0, 0,    5],
+            # [ 1, 0, 0, 0, 0, 0, 0,   16],
+            [ 0,-1, 0, 0, 0, 0, 0,    5],
             [ 0, 1, 0, 0, 0, 0, 0,    5],
         ])
         Aug_u = np.array([
-            [-1, 0, 0,    12 * np.pi / 180],
-            [ 1, 0, 0,    12 * np.pi / 180],
-            [ 0,-1, 0,    10 * np.pi / 180],
-            [ 0, 1, 0,    45 * np.pi / 180],
-            [ 0, 0,-1,    1],
-            [ 0, 0, 1,    1],
+            [-1, 0,    12 * np.pi / 180],
+            [ 1, 0,    12 * np.pi / 180],
+            [ 0,-1,    -10 * np.pi / 180],
+            [ 0, 1,    45 * np.pi / 180],
         ])
 
         # Get the QP matrices
