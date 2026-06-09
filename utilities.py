@@ -31,11 +31,7 @@ def convert_GIFT_AB_to_QP_AB(
     A_MPC[[[0], [1], [2], [5]], [6]] = -A_dx - B_du
 
     # Position integration: x_pos_{k+1} = x_pos_k + u_k*Ts,  z_pos_{k+1} = z_pos_k + w_k*Ts
-    # A_MPC[[3, 4], [0, 1]] += Ts
-    # Cooper's intuiation: the position integration also depends on theta, so we add that term to A_MPC as well
-    theta = dx[3] 
-    A_MPC[[3, 4], [0]] += Ts * np.array([np.cos(theta), np.sin(theta)])
-    A_MPC[[3, 4], [1]] += Ts * np.array([-np.sin(theta), np.cos(theta)])
+    A_MPC[[3, 4], [0, 1]] += Ts
     A_MPC[[3, 4], [3, 4]] += 1
     A_MPC[-1, -1] += 1
 
