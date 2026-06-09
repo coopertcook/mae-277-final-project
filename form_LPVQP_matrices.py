@@ -60,6 +60,8 @@ def form_LPVQP_matrices(
     Gu = scipy.linalg.block_diag(*[Au]*N)
     wu = np.tile(bu, (N, 1))
 
+    print(Gu.shape, Gx.shape)
+
     G = np.vstack((Gu, Gx))
     W = np.vstack((wu, wx))
     T = np.vstack((np.zeros((Gu.shape[0], m)), Ex))

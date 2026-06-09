@@ -31,7 +31,6 @@ def convert_GIFT_AB_to_QP_AB(
     A_MPC[[[0], [1], [2], [5]], [6]] = -A_dx - B_du
 
     # Position integration: x_pos_{k+1} = x_pos_k + u_k*Ts,  z_pos_{k+1} = z_pos_k + w_k*Ts
-    A_MPC[[3, 4], [0, 1]] += Ts
     A_MPC[[3, 4], [3, 4]] += 1
     A_MPC[-1, -1] += 1
 
