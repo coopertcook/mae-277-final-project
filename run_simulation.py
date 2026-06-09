@@ -1,3 +1,4 @@
+import argparse
 import time
 import casadi as ca
 import numpy as np
@@ -12,10 +13,18 @@ from GIFT.utils.utilities import TrajectoryData, standardize_simulator_data
 
 from utilities import convert_GIFT_AB_to_QP_AB
 from form_LPVQP_matrices import form_LPVQP_matrices
+from plotter import plot_log, load_latest_log
 
+# CLI args: defaults match current hand-tuned values so running directly is unchanged
+_p = argparse.ArgumentParser(add_help=False)
+_p.add_argument("--Q_pos", type=float, default=0.11039)
+_p.add_argument("--R",     type=float, default=0.408854)
+_p.add_argument("--N",     type=int,   default=2)
+_p.add_argument("--no_viz", action="store_true")
+_args, _ = _p.parse_known_args()
 
 animator_type: str = "matplotlib"
-visualize: bool = True
+visualize: bool = not _args.no_viz
 vehicle: str = "raptor_glider_3dof"
 
 aircraft = Aircraft(type=vehicle, config_overrides={})
@@ -23,24 +32,34 @@ simulation = Simulator(aircraft, dynamics="3DOF")
 LPV_dynamics = Simulator(aircraft, enable_logging=False, dynamics="LPV3").dynamics
 
 t_start = 0
-t_end = 8
+t_end = 10
 dt = 0.1
-perch_location = np.array([25., -25.]) # [north, down] (using GIFT location information)
-N = 5
+perch_location = np.array([15., 0.]) # [north, down] (using GIFT location information)
+N = _args.N
 
 time_start = time.time()
 
 last_time = 0
+_min_dist = float("inf")
 times = np.arange(t_start, t_end + dt, dt)
 for i, t in enumerate(times[:-1]):
-    last_time = t
     current_state = np.append(aircraft.x[[0, 2, 7, 3, 5, 10]], 1)
     current_control = np.append(aircraft.u, 1)
 
     states_to_fetch = [current_state]
     controls_to_fetch = [current_control]
 
-    if np.linalg.norm(current_state[[3, 4]] - perch_location, ord=2, axis=0) <= 1:
+    # Pre-step check (avoid solving QP when already arrived)
+    _dist = np.linalg.norm(current_state[[3, 4]] - perch_location, ord=2, axis=0)
+    _min_dist = min(_min_dist, _dist)
+    if _dist <= 0.5:
+        last_time = t
+        break
+    if _min_dist < 3.0 and _dist > _min_dist + 3.0:
+        last_time = t
+        break
+    if _dist > np.max(perch_location) + 1:  # further than initial distance — clearly diverging
+        last_time = t
         break
 
     try:
@@ -75,19 +94,19 @@ for i, t in enumerate(times[:-1]):
 
             # Running cost on distance from perch: (x_pos - 25)^2 + (z_pos + 10)^2
             Q = np.zeros((7, 7))
-            Q[[0, 1, 2], [0, 1, 2]] = 1
-            Q[[3, 4], [3, 4]] = 1
-            Q[[3, 4], -1] = -perch_location
-            Q[-1, [3, 4]] = -perch_location
+            Q[[0, 1, 2], [0, 1, 2]] = 0
+            Q[[3, 4], [3, 4]] = _args.Q_pos
+            Q[[3, 4], -1] = -perch_location * _args.Q_pos
+            Q[-1, [3, 4]] = -perch_location * _args.Q_pos
 
             # Create the control cost matrix (2x2 since control is [tailalt, splay])
-            R = np.eye(2) * 0.001
+            R = np.eye(2) * _args.R
 
             # Create the terminal cost matrix
             P = np.zeros((7, 7))
-            P[[3, 4], [3, 4]] += 1
-            P[[3, 4], -1] = -perch_location
-            P[-1, [3, 4]] = -perch_location
+            P[[3, 4], [3, 4]] += _args.Q_pos
+            P[[3, 4], -1] = -perch_location * _args.Q_pos
+            P[-1, [3, 4]] = -perch_location * _args.Q_pos
 
             # Create the constraint matrices
             Aug_x = np.array([
@@ -95,12 +114,16 @@ for i, t in enumerate(times[:-1]):
                 # [ 1, 0, 0, 0, 0, 0, 0,   16],
                 [ 0,-1, 0, 0, 0, 0, 0,    5],
                 [ 0, 1, 0, 0, 0, 0, 0,    5],
+                # [ 0, 0, 0, 0, 0, 1, 0,    45 * np.pi / 180],  # theta <=  45 deg
+                # [ 0, 0, 0, 0, 0,-1, 0,    45 * np.pi / 180],  # theta >= -45 deg
+                # [ 0, 0, 1, 0, 0, 0, 0,    20 * np.pi / 180],  # q <=  20 deg/s
+                # [ 0, 0,-1, 0, 0, 0, 0,    20 * np.pi / 180],  # q >= -20 deg/s
             ])
             Aug_u = np.array([
                 [-1, 0,    12 * np.pi / 180],
                 [ 1, 0,    12 * np.pi / 180],
-                [ 0,-1,    10 * np.pi / 180],
-                [ 0, 1,    45 * np.pi / 180],
+                [ 0,-1,   -20 * np.pi / 180],  # splay >= 20 deg (near trim ~26 deg)
+                [ 0, 1,    35 * np.pi / 180],  # splay <= 35 deg (near trim ~26 deg)
             ])
 
             # Get the QP matrices
@@ -150,8 +173,16 @@ for i, t in enumerate(times[:-1]):
         aircraft.u[0] = uk[0, 0]
         aircraft.u[1] = uk[1, 0]
 
+        # Advance the simulation by one step with the new control input
         _ = simulation.execute(t_start=t, t_end=t+dt, t_step=1e-2, write_history=False)
-        # aircraft.u[0] += 0.01
+        last_time = t + dt
+
+        # Post-step check: catches overshoot within the same timestep
+        _post_state = np.append(aircraft.x[[0, 2, 7, 3, 5, 10]], 1)
+        _post_dist = np.linalg.norm(_post_state[[3, 4]] - perch_location, ord=2, axis=0)
+        _min_dist = min(_min_dist, _post_dist)
+        if _post_dist <= 0.5 or (_min_dist < 3.0 and _post_dist > _min_dist + 3.0):
+            break
     except RuntimeError:
         break
 
@@ -166,14 +197,24 @@ result = TrajectoryData(
 time_end = time.time()
 print(f">>> Simulation completed in {time_end - time_start:.2f} seconds")
 
-if visualize:
-    result.data = result.data.drop_nulls()
-    # use the results everything to visualize the data
-    plots = SimulationPlotter(
-        results=[result],
-        vehicle=vehicle,
-    )
-    plots.show_all()
+# Compute and save metric for Bayesian optimisation
+import json, glob, os, pandas as pd
+_csv_files = sorted(glob.glob("outputs/_data_logs/*.csv"))
+if _csv_files:
+    _df = pd.read_csv(_csv_files[-1])
+    _north = _df["north"].to_numpy()
+    _down  = _df["down"].to_numpy()
+    _t_max = float(_df["t"].max())
+    _dists = np.sqrt((_north - perch_location[0])**2 + (_down - perch_location[1])**2)
+    _metric = float(_dists.min())
+    _metric += max(0.0, 2.0 - _t_max) * 20.0   # heavy penalty for runs shorter than 2s (crashes)
+else:
+    _metric = 1000.0
+os.makedirs("outputs", exist_ok=True)
+with open("outputs/mpc_metric.json", "w") as _f:
+    json.dump({"metric": _metric, "Q_pos": _args.Q_pos, "R": _args.R, "N": _args.N,
+               "t_max": _t_max if _csv_files else 0.0}, _f)
+print(f">>> Metric (min dist to perch): {_metric:.3f} m")
 
-    # print(">>> Starting Matplotlib animation...")
-    # Animation([result]).animate(speed=0.4)
+if visualize:
+    plot_log(load_latest_log(), perch_location=perch_location)
