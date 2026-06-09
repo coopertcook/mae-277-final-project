@@ -23,7 +23,7 @@ simulation = Simulator(aircraft, dynamics="3DOF")
 LPV_dynamics = Simulator(aircraft, enable_logging=False, dynamics="LPV3").dynamics
 
 t_start = 0
-t_end = 100
+t_end = 8
 dt = 0.1
 perch_location = np.array([25., -25.]) # [north, down] (using GIFT location information)
 N = 5
@@ -42,20 +42,20 @@ for i, t in enumerate(times[:-1]):
 
     if np.linalg.norm(current_state[[3, 4]] - perch_location, ord=2, axis=0) <= 1:
         break
-    
+
     try:
         for N_num in range(1, N+1):
             print(f">>> Solving QP for N = {N_num} at time {t}...")
 
-        # Fetch the A and B matrices for each of the state and control vectors for the current problem.
-        A_qps: list[np.ndarray[tuple[int, int], np.dtype[np.float64]]] = []
-        B_qps: list[np.ndarray[tuple[int, int], np.dtype[np.float64]]] = []
-        for state, control in zip(states_to_fetch, controls_to_fetch):
-            # Convert the QP state to the state notation used in GIFT
-            GIFT_state = np.zeros((12))
-            GIFT_control = np.zeros((2))
-            GIFT_state[[0, 2, 7, 3, 5, 10]] = state[:-1]
-            GIFT_control[[0, 1]] = control[:-1]
+            # Fetch the A and B matrices for each of the state and control vectors for the current problem.
+            A_qps: list[np.ndarray[tuple[int, int], np.dtype[np.float64]]] = []
+            B_qps: list[np.ndarray[tuple[int, int], np.dtype[np.float64]]] = []
+            for state, control in zip(states_to_fetch, controls_to_fetch):
+                # Convert the QP state to the state notation used in GIFT
+                GIFT_state = np.zeros((12))
+                GIFT_control = np.zeros((2))
+                GIFT_state[[0, 2, 7, 3, 5, 10]] = state[:-1]
+                GIFT_control[[0, 1]] = control[:-1]
 
                 # Get initial body-frame, nearest trim A and B matrices
                 dx, du, A, B = LPV_dynamics.get_body_AB(GIFT_state, GIFT_control)
@@ -64,8 +64,10 @@ for i, t in enumerate(times[:-1]):
                 Ts = 0.1
                 A_qp, B_qp = convert_GIFT_AB_to_QP_AB(dx, du, A, B, Ts)
 
-                A_qp[[3, 3], [0, 1]] += [Ts * np.cos(state[2]), Ts * -np.sin(state[2])]
-                A_qp[[4, 4], [0, 1]] += [Ts * np.sin(state[2]), Ts *  np.cos(state[2])]
+                # Rotate body velocities (u,w) to inertial (NED) frame using current pitch angle.
+                theta = state[5] # pitch angle is at index 5 in the QP state vector
+                A_qp[[3, 3], [0, 1]] += [Ts * np.cos(theta),  Ts * np.sin(theta)]
+                A_qp[[4, 4], [0, 1]] += [-Ts * np.sin(theta), Ts * np.cos(theta)]
 
                 # Add the QP A and B matrices to the lists
                 A_qps.append(A_qp)
@@ -87,23 +89,21 @@ for i, t in enumerate(times[:-1]):
             P[[3, 4], -1] = -perch_location
             P[-1, [3, 4]] = -perch_location
 
-
-
-        # Create the constraint matrices
-        Aug_x = np.array([
-            [-1, 0, 0, 0, 0, 0, 0,    5],
-            [ 1, 0, 0, 0, 0, 0, 0,   16],
-            [ 0,-1, 0, 0, 0, 0, 0,   -5],
-            [ 0, 1, 0, 0, 0, 0, 0,    5],
-        ])
-        Aug_u = np.array([
-            [-1, 0, 0,    12 * np.pi / 180],
-            [ 1, 0, 0,    12 * np.pi / 180],
-            [ 0,-1, 0,    10 * np.pi / 180],
-            [ 0, 1, 0,    45 * np.pi / 180],
-            [ 0, 0,-1,    1],
-            [ 0, 0, 1,    1],
-        ])
+            # Create the constraint matrices
+            Aug_x = np.array([
+                [-1, 0, 0, 0, 0, 0, 0,    5],
+                [ 1, 0, 0, 0, 0, 0, 0,   16],
+                [ 0,-1, 0, 0, 0, 0, 0,    5],
+                [ 0, 1, 0, 0, 0, 0, 0,    5],
+            ])
+            Aug_u = np.array([
+                [-1, 0,    12 * np.pi / 180],
+                [ 1, 0,    12 * np.pi / 180],
+                [ 0,-1,    10 * np.pi / 180],
+                [ 0, 1,    45 * np.pi / 180],
+                [ 0, 0,    1],
+                [ 0, 0,    1],
+            ])
 
             # Get the QP matrices
             H, L, G, W, T, IMPC, Sx, Su = form_LPVQP_matrices(
@@ -117,7 +117,7 @@ for i, t in enumerate(times[:-1]):
             # Initialize the CasADi sparse matrices
             h = ca.DM(H)
             a = ca.DM(G)
-            
+
             # Create the quadratic program problem using CasADi's `conic` class.
             qp = {}
             qp['h'] = h.sparsity() # Passes only the sparsity patterns
