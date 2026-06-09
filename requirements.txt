@@ -46,6 +46,7 @@ numpy==2.4.6
 numpy-typing-compat==20251206.2.4
 onnx==1.21.0
 optype==0.17.1
+optuna==4.3.0
 pandas==3.0.3
 parso==0.8.7
 pillow==12.2.0
