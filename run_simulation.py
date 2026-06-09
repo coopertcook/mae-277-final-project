@@ -91,8 +91,8 @@ for i, t in enumerate(times[:-1]):
 
             # Create the constraint matrices
             Aug_x = np.array([
-                [-1, 0, 0, 0, 0, 0, 0,    5],
-                [ 1, 0, 0, 0, 0, 0, 0,   16],
+                # [-1, 0, 0, 0, 0, 0, 0,    5],
+                # [ 1, 0, 0, 0, 0, 0, 0,   16],
                 [ 0,-1, 0, 0, 0, 0, 0,    5],
                 [ 0, 1, 0, 0, 0, 0, 0,    5],
             ])
@@ -101,8 +101,6 @@ for i, t in enumerate(times[:-1]):
                 [ 1, 0,    12 * np.pi / 180],
                 [ 0,-1,    10 * np.pi / 180],
                 [ 0, 1,    45 * np.pi / 180],
-                [ 0, 0,    1],
-                [ 0, 0,    1],
             ])
 
             # Get the QP matrices
@@ -170,7 +168,7 @@ print(f">>> Simulation completed in {time_end - time_start:.2f} seconds")
 
 if visualize:
     result.data = result.data.drop_nulls()
-    # use the results dictionary to visualize the data
+    # use the results everything to visualize the data
     plots = SimulationPlotter(
         results=[result],
         vehicle=vehicle,
