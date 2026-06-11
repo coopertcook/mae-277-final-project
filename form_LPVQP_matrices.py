@@ -39,10 +39,9 @@ def form_LPVQP_matrices(
 
     R_bar = scipy.linalg.block_diag(*[R[i, :, :] for i in range (N)])
     
-    H = Su.T @ Q_bar @ Su + R_bar
-    F = Sx.T @ Q_bar @ Su
+    H = Su.T @ (Q_bar @ Su) + R_bar
+    F = Sx.T @ (Q_bar @ Su)
     L = F.T
-    
 
     # --------- Constraints ------------------------------------------
     Ax = Aug_x[:, :-1]
@@ -60,8 +59,6 @@ def form_LPVQP_matrices(
     Gu = scipy.linalg.block_diag(*[Au]*N)
     wu = np.tile(bu, (N, 1))
 
-    print(Gu.shape, Gx.shape)
-
     G = np.vstack((Gu, Gx))
     W = np.vstack((wu, wx))
     T = np.vstack((np.zeros((Gu.shape[0], m)), Ex))
@@ -75,39 +72,40 @@ if __name__ == "__main__":
 
     # Initial system A matrix
     A = np.array([
-        [1, 0],
+        [1, 1],
         [0, 1],
     ], dtype=np.float64)
 
     # Initial system B matrix
     B = np.array([
-        [1, 0],
-        [0, 1],
+        [0],
+        [1],
     ], dtype=np.float64)
 
     # Initial state cost
     Q = np.eye(2)
 
     # Initial control cost
-    R = np.eye(2)
+    R = np.array([[0.1]])
 
     # Initial terminal cost
-    P = np.eye(2)
+    P = np.eye(2)*1
 
     # State constraints augmented matrix
-    Aug_x = np.zeros((A.shape[0], A.shape[0] + 1))
+    # Aug_x = np.zeros((A.shape[0], A.shape[0] + 1))
+    Aug_x = np.hstack((Q, np.ones((2, 1))))
 
     # Control constraints augmented matrix
-    Aug_u = np.zeros((B.shape[0], B.shape[0] + 1))
+    Aug_u = np.zeros((B.shape[0], B.shape[1] + 1))
 
     # Steps to horizon
-    N = 2
+    N = 6
 
     # A and B matrices for each step
-    As = np.stack([A*float(i + 1) for i in range(N)])
-    Bs = np.stack([B*float(i + 1) for i in range(N)])
+    As = np.stack([A for _ in range(N)])
+    Bs = np.stack([B for _ in range(N)])
     Qs = np.stack([Q]*N)
     Rs = np.stack([R]*N)
 
     result = form_LPVQP_matrices(As, Bs, Qs, Rs, P, Aug_x, Aug_u)
-    # print(result)
+    print(result)

@@ -3,14 +3,14 @@ import numpy as np
 
 
 def convert_GIFT_AB_to_QP_AB(
-    dx: np.ndarray[tuple[int, int], np.dtype[np.float64]],
-    du: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+    x_trim: np.ndarray[tuple[int, int], np.dtype[np.float64]],
+    u_trim: np.ndarray[tuple[int, int], np.dtype[np.float64]],
     Ac: np.ndarray[tuple[int, int], np.dtype[np.float64]],
     Bc: np.ndarray[tuple[int, int], np.dtype[np.float64]],
     Ts: float):
     '''
     x -> [u, w, q, x, z, theta, 1]
-    u -> [u_tailalt, u_splay, 1]
+    u -> [u_tailalt, u_splay]
     '''
     # Use scipy's ZOH discretization to avoid inv(Ac) failing when Ac is singular
     # (e.g. theta_dot = q gives a zero eigenvalue in Ac)
@@ -26,13 +26,21 @@ def convert_GIFT_AB_to_QP_AB(
 
     # Last column absorbs both trim offsets so the QP only optimizes real controls
     # -(Ad @ dx + Bd @ du) = -(A_trim*x_trim + B_trim*u_trim)
-    A_dx = Ad @ dx[:, np.newaxis]
-    B_du = Bd @ du[:, np.newaxis]
-    A_MPC[[[0], [1], [2], [5]], [6]] = -A_dx - B_du
+    A_trim = Ad @ x_trim[:, np.newaxis]
+    B_trim = Bd @ u_trim[:, np.newaxis]
+    A_trim[[0, 1, 2], 0] -= x_trim[[0, 1, 2]]
+    A_MPC[[[0], [1], [2], [5]], [-1]] = - A_trim - B_trim
+    # print(Ad)
+    # print(Bd)
+    # print(A_trim)
+    # print(B_trim)
+
+    # print(Ad @ np.array([[14,  2, 0, 0]]).T)
+    # print(Bd @ (np.array([[12, 12]]).T * np.pi / 180))
 
     # Position integration: identity terms only.
     # Velocity coupling (rows 3,4 × cols 0,1) is applied by the caller with the correct theta.
-    A_MPC[[3, 4], [3, 4]] += 1
+    A_MPC[[3, 4], [3, 4]] = 1
     A_MPC[-1, -1] += 1
 
     # B_MPC is 7x2 — no homogeneous column, trim offset moved into A_MPC last column above
@@ -41,3 +49,20 @@ def convert_GIFT_AB_to_QP_AB(
 
     return A_MPC, B_MPC
     
+
+import os
+import sys
+
+# Define a context manager to redirect stdout and stderr temporarily
+class SuppressOutput:
+    def __enter__(self):
+        self.stdout = sys.stdout
+        self.stderr = sys.stderr
+        sys.stdout = open(os.devnull, 'w')
+        sys.stderr = open(os.devnull, 'w')
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        sys.stdout.close()
+        sys.stderr.close()
+        sys.stdout = self.stdout
+        sys.stderr = self.stderr

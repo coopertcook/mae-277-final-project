@@ -2,13 +2,14 @@ import glob
 import re
 from pathlib import Path
 
+from matplotlib.axes import Axes
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
 TUNE_LOG_DIR = Path("outputs/tune_datalog")
-PERCH = np.array([15., 0.])  # [north, down]
+PERCH = np.array([0., 0.])  # [north, down]
 
 
 def parse_metric(filename: str) -> float:
@@ -52,6 +53,7 @@ def main():
     ax_traj, ax_vel, ax_theta, ax_ctrl = (
         axes[0, 0], axes[0, 1], axes[1, 0], axes[1, 1]
     )
+    ax_traj: Axes
 
     for i, (csv_path, metric) in enumerate(zip(csvs, metrics)):
         df = pd.read_csv(csv_path)
@@ -67,7 +69,7 @@ def main():
         is_best = (i == best_idx)
         kw = dict(linewidth=2.0, alpha=1.0, zorder=3) if is_best else dict(linewidth=0.8, alpha=0.15, color="gray", zorder=1)
 
-        ax_traj.plot(north, -down, **kw)
+        ax_traj.plot(north, down, **kw)
         ax_vel.plot(t, u, **kw)
         ax_vel.plot(t, w, **(kw | ({"linestyle": "--"} if is_best else {})))
         ax_theta.plot(t, theta, **kw)
@@ -76,7 +78,7 @@ def main():
 
     # Perch marker + target zone
     ax_traj.plot(PERCH[0], -PERCH[1], "r*", markersize=14, zorder=5, label="Perch")
-    ax_traj.add_patch(mpatches.Circle((PERCH[0], -PERCH[1]), 0.5,
+    ax_traj.add_patch(mpatches.Circle((PERCH[0], PERCH[1]), 0.5,
                                       color="red", fill=False, linestyle="--",
                                       linewidth=1.5, zorder=5, label="0.5 m target zone"))
 
@@ -101,9 +103,10 @@ def main():
         ax.grid(True)
         ax.legend(fontsize=7)
 
-    ax_traj.set_xlim(0, 20)
-    ax_traj.set_ylim(-5, 10)
+    ax_traj.set_xlim(-17, 2)
+    ax_traj.set_ylim(-10, 5)
     ax_traj.set_xlabel("North (m)")
+    ax_traj.invert_yaxis()
     ax_vel.set_xlabel("Time (s)")
     ax_theta.set_xlabel("Time (s)")
     ax_ctrl.set_xlabel("Time (s)")
