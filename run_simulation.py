@@ -37,7 +37,7 @@ dt = 0.01 # GIFT timestep
 Ts = 0.01 # MPC timestep
 perch_location = np.array([0., 0.]) # [north, down] (using GIFT location information)
 N = _args.N
-aircraft.x[[3, 5]] = np.array([-5., 5.])
+aircraft.x[[3, 5]] = np.array([-15., 0.])
 aircraft.u[1] = 35 * np.pi / 180
 
 time_start = time.time()
@@ -109,7 +109,7 @@ for i, t in enumerate(times[:-1]):
                 # A_qp[4, 5] *= -1
                 # A_qp[[0, 1, 2], 0] += state[[0, 1, 2]]
 
-                B_qp = B_qp[:, [0]]
+                # B_qp = B_qp[:, [0]]
                 B_qp[:5, :] *= -1
 
                 # Add the QP A and B matrices to the lists
@@ -120,18 +120,13 @@ for i, t in enumerate(times[:-1]):
             Q = np.zeros((7, 7))
             Q[[0, 1, 2], [0, 1, 2]] = 0
             Q[[3, 4], [3, 4]] = _args.Q_pos
-            # Q[3, 3] *= -1
-            # Q[[3, 4], -1] = -perch_location * _args.Q_pos
-            # Q[-1, [3, 4]] = -perch_location * _args.Q_pos
 
             # Create the control cost matrix (2x2 since control is [tailalt, splay])
-            R = np.eye(1) * _args.R
+            R = np.eye(B_qps[0].shape[1]) * _args.R
 
             # Create the terminal cost matrix
             P = np.zeros((7, 7))
             P[[3, 4], [3, 4]] += _args.Q_pos
-            # P[[3, 4], -1] = -perch_location * _args.Q_pos
-            # P[-1, [3, 4]] = -perch_location * _args.Q_pos
 
             # Create the constraint matrices
             Aug_x = np.array([
@@ -147,12 +142,12 @@ for i, t in enumerate(times[:-1]):
                 # [ 0, 0,-1, 0, 0, 0, 0,    20 * np.pi / 180],  # q >= -20 deg/s
             ])
             Aug_u = np.array([
-                # [ 0,-1,   -20 * np.pi / 180],  # splay >= 20 deg (near trim ~26 deg)
-                # [ 0, 1,    35 * np.pi / 180],  # splay <= 35 deg (near trim ~26 deg)
-                # [-1, 0,    25 * np.pi / 180],
-                # [ 1, 0,    25 * np.pi / 180],
-                [-1,    25 * np.pi / 180],
-                [ 1,    25 * np.pi / 180],
+                [ 0,-1,   -20 * np.pi / 180],  # splay >= 20 deg (near trim ~26 deg)
+                [ 0, 1,    35 * np.pi / 180],  # splay <= 35 deg (near trim ~26 deg)
+                [-1, 0,    25 * np.pi / 180],
+                [ 1, 0,    25 * np.pi / 180],
+                # [-1,    25 * np.pi / 180],
+                # [ 1,    25 * np.pi / 180],
             ])
 
             # Get the QP matrices
@@ -187,7 +182,7 @@ for i, t in enumerate(times[:-1]):
             x_pred = Sx @ current_state[:, np.newaxis] + Su @ U_opt
             x_pred = x_pred.reshape(N_num+1, len(current_state)).T # Each row: time step N, each column: state variable
             u_pred = U_opt.reshape(N_num, -1).T
-            u_pred = np.vstack([u_pred, np.ones_like(u_pred)*current_control[1]])
+            # u_pred = np.vstack([u_pred, np.ones_like(u_pred)*current_control[1]])
 
             # Append all the new states and controls to lists for the next QP loop
             states_to_fetch = [states_to_fetch[0]]
@@ -201,6 +196,7 @@ for i, t in enumerate(times[:-1]):
         uk = IMPC @ U_opt
         # uk[0, 0]
         simulation.aircraft.u[0] = u_pred[0, 0]
+        simulation.aircraft.u[1] = u_pred[1, 0]
 
         # Advance the simulation by one step with the new control input
         _ = simulation.execute(t_start=t, t_step=1e-3, t_end=t+dt, write_history=False)
@@ -236,15 +232,19 @@ if _csv_files:
     _down  = _df["down"].to_numpy()
     _t_max = float(_df["t"].max())
     _dists = np.sqrt((_north - perch_location[0])**2 + (_down - perch_location[1])**2)
-    _metric = float(_dists.min())
-    _metric += max(0.0, 2.0 - _t_max) * 20.0   # heavy penalty for runs shorter than 2s (crashes)
+    
+    if np.min(_dists) <= 2:
+        _metric = _t_max # float(_dists.min())
+    else:
+        _metric = 100
+    # _metric += max(0.0, 1.0 - _t_max) * 20.0   # heavy penalty for runs shorter than 2s (crashes)
 else:
     _metric = 1000.0
 os.makedirs("outputs", exist_ok=True)
 with open("outputs/mpc_metric.json", "w") as _f:
     json.dump({"metric": _metric, "Q_pos": _args.Q_pos, "R": _args.R, "N": _args.N,
                "t_max": _t_max if _csv_files else 0.0}, _f)
-print(f">>> Metric (min dist to perch): {_metric:.3f} m")
+print(f">>> Metric (min dist to perch): {_metric:.3f} sec")
 
 # if visualize:
 #     result.data = result.data.drop_nulls()
