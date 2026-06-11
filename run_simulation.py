@@ -37,7 +37,7 @@ dt = 0.01 # GIFT timestep
 Ts = 0.01 # MPC timestep
 perch_location = np.array([0., 0.]) # [north, down] (using GIFT location information)
 N = _args.N
-aircraft.x[[3, 5]] = np.array([-15., 0.])
+aircraft.x[[3, 5]] = np.array([-5., 5.])
 aircraft.u[1] = 35 * np.pi / 180
 
 time_start = time.time()

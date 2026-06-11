@@ -1,4 +1,4 @@
 _logs
-outputs
+outputs/_data_logs
 __pycache__
 .vscode
